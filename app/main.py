@@ -1,36 +1,77 @@
+import asyncio
+import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
+
 from app.api.v1.router import api_router
 from app.core.config import settings
-import asyncio
-from app.workers.processor import transaction_processor
-from fastapi.exceptions import RequestValidationError
-from fastapi import Request
-from fastapi.responses import JSONResponse
+from app.core.state import state
 
-# Створюємо екземпляр застосунку
+async def monitor_system():
+    print("📊 Моніторинг запущено (Redis Mode)...")
+    last_time = time.time()
+    last_tx_count = 0
+
+    while True:
+        await asyncio.sleep(5)
+
+        current_time = time.time()
+        current_tx_count = state.metrics.tx_processed
+
+        try:
+            q_size = await state.redis.llen("scanner_tx_queue")
+        except:
+            q_size = -1
+
+        delta_time = current_time - last_time
+        delta_tx = current_tx_count - last_tx_count
+
+        instant_tps = delta_tx / delta_time if delta_time > 0 else 0
+        total_elapsed = current_time - state.metrics.start_time
+        avg_tps = current_tx_count / total_elapsed if total_elapsed > 0 else 0
+
+        print(f"\n--- ⏱️ REDIS STATUS ({delta_time:.1f}s) ---")
+        print(f"🚀 Speed: {instant_tps:.1f} tx/s (Avg: {avg_tps:.1f})")
+        print(f"✅ Processed: {current_tx_count}")
+        print(f"📚 Redis Queue: {q_size} batches")
+
+        last_time = current_time
+        last_tx_count = current_tx_count
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    monitor_task = asyncio.create_task(monitor_system())
+    print("✅ Webhook Service (Ingestion) запущено.")
+
+    yield
+
+    print("🛑 Зупинка сервісів...")
+    monitor_task.cancel()
+
+    await state.close()
+    print("💤 З'єднання з Redis закрито.")
+
+    try:
+        await monitor_task
+    except asyncio.CancelledError:
+        pass
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    lifespan=lifespan
 )
 
-# Підключаємо роутери (аналог AppModule imports)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 async def root():
-    return {"message": "Monad Scanner API is running", "docs": "/docs"}
+    try:
+        q_len = await state.redis.llen("scanner_tx_queue")
+    except:
+        q_len = "Redis unavailable"
 
-@app.on_event("startup")
-async def startup_event():
-    # Запускаємо процесор як фонову задачу
-    asyncio.create_task(transaction_processor())
-    print("✅ Фоновий воркер успішно запущено.")
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    print(f"❌ Помилка валідації Pydantic: {exc.errors()}")
-    return JSONResponse(
-        status_code=422,
-        content={"detail": exc.errors(), "body": str(exc.body)},
-    )
+    return {
+        "queue_size": q_len,
+        "metrics": state.metrics
+    }

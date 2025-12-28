@@ -6,7 +6,6 @@ class PingPayload(BaseModel):
     message: str
 
 class QNTransaction(BaseModel):
-    # Дозволяємо ігнорувати додаткові поля, щоб не падати при оновленнях блокчейну
     model_config = ConfigDict(extra="ignore")
 
     hash: str
@@ -20,7 +19,6 @@ class QNTransaction(BaseModel):
     transactionIndex: str
     type: str
 
-    # Робимо технічні поля Optional, бо вони залежать від типу транзакції
     gas: Optional[str] = None
     gasPrice: Optional[str] = None
     chainId: Optional[str] = None
@@ -28,7 +26,6 @@ class QNTransaction(BaseModel):
     r: Optional[str] = None
     s: Optional[str] = None
 
-    # Поля для EIP-1559 та Blob транзакцій (BSC)
     maxFeePerGas: Optional[str] = None
     maxPriorityFeePerGas: Optional[str] = None
     maxFeePerBlobGas: Optional[str] = None
@@ -46,6 +43,5 @@ class QNMetadata(BaseModel):
     data_size_bytes: int
 
 class QNPayload(BaseModel):
-    # Навіть без батчингу QuickNode зазвичай надсилає List[List[]]
     data: List[List[QNTransaction]]
     metadata: QNMetadata

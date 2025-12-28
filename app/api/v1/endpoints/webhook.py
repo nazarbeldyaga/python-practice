@@ -1,24 +1,24 @@
-from fastapi import APIRouter, Response
-from typing import Union
-import asyncio
-from app.schemas.transaction import QNPayload, PingPayload
+from fastapi import APIRouter, Response, Request
+from app.core.state import state
+import json
 
 router = APIRouter()
-
-# Це наша "пуповина" між FastAPI та Processor
-data_queue = asyncio.Queue()
+QUEUE_NAME = "scanner_tx_queue"
 
 @router.post("/webhook")
-async def quicknode_webhook(payload: Union[QNPayload, PingPayload]):
-    if isinstance(payload, PingPayload):
-        return Response(content="PONG", status_code=200)
+async def quicknode_webhook(request: Request):
+    body_bytes = await request.body()
 
-    # Додаємо транзакції в чергу
-    count = 0
-    for block_transactions in payload.data:
-        for tx in block_transactions:
-            await data_queue.put(tx)
-            count += 1
+    if len(body_bytes) < 150:
+        try:
+            data = json.loads(body_bytes)
+            if data.get("message") == "PING":
+                return Response(content="PONG", status_code=200)
+        except:
+            pass
 
-    print(f"📥 [BSC] Отримано блок {payload.metadata.batch_start_range}: {count} транзакцій додано в чергу.")
+    await state.redis.rpush(QUEUE_NAME, body_bytes)
+
+    state.metrics.blocks_received += 1
+
     return Response(status_code=200)

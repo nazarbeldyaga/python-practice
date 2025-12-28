@@ -8,21 +8,19 @@ dependencies = [
     "fastapi>=0.127.1",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
+    "pyngrok>=7.5.0",
+    "redis>=7.1.0",
     "uvicorn[standard]>=0.40.0",
     "web3>=7.14.0",
 ]
 
 [tool.poe.tasks]
-# Аналог "npm run dev"
 dev = "uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
 
-# Аналог "npm start" (запуск без перезавантаження для продакшну)
 start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-# Скрипт для запуску вашого блокчейн-воркера (не як веб-сервер)
 worker = "python -m app.workers.manager"
 
-# Лінтер та тести
 lint = "ruff check app"
 test = "pytest"
 

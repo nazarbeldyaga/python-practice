@@ -1,41 +1,33 @@
 import asyncio
-from decimal import Decimal
-from app.api.v1.endpoints.webhook import data_queue
+import json
+from app.core.state import state
+from app.schemas.transaction import QNPayload
 
-def hex_to_dec(hex_str: str, decimals: int = 18) -> Decimal:
-    """Конвертує Hex Wei у Decimal BNB/MON"""
-    if not hex_str or hex_str == "0x":
-        return Decimal(0)
-    # Перетворюємо Hex у ціле число (int), потім ділимо на 10^18
-    return Decimal(int(hex_str, 16)) / Decimal(10**decimals)
+QUEUE_NAME = "scanner_tx_queue"
 
 async def transaction_processor():
-    """
-    Постійний цикл обробки транзакцій з черги.
-    """
-    print("⚙️  Processor запрацював: Очікування транзакцій з черги...")
+    print(f"⚙️  Redis-Processor підключено до черги '{QUEUE_NAME}'")
 
     while True:
-        # Чекаємо на нову транзакцію
-        tx = await data_queue.get()
-
         try:
-            # Конвертуємо суму (Value)
-            amount = hex_to_dec(tx.value)
+            result = await state.redis.blpop(QUEUE_NAME, timeout=0)
 
-            # Визначаємо тип дії
-            if tx.input == "0x":
-                action = "💰 Прямий переказ"
-            else:
-                # Беремо перші 10 символів (Method ID)
-                action = f"📝 Контракт ({tx.input[:10]})"
+            if not result:
+                continue
 
-            # Фільтруємо "цікаві" транзакції (наприклад, більше 0.1 BNB)
-            if amount > 0.1:
-                print(f"{action} | {amount:.4f} BNB | Від: {tx.from_address[:10]}... | Hash: {tx.hash[:10]}...")
+            _, raw_body = result
+
+            try:
+                json_data = json.loads(raw_body)
+                payload = QNPayload(**json_data)
+
+                tx_count = sum(len(block) for block in payload.data)
+
+                state.metrics.tx_processed += tx_count
+
+            except Exception as e:
+                print(f"⚠️ Помилка парсингу: {e}")
 
         except Exception as e:
-            print(f"⚠️ Помилка обробки транзакції {tx.hash}: {e}")
-        finally:
-            # Кажемо черзі, що завдання виконано
-            data_queue.task_done()
+            print(f"🔥 Помилка з'єднання з Redis: {e}")
+            await asyncio.sleep(5)
