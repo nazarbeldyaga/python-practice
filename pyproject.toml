@@ -1,0 +1,32 @@
+[project]
+name = "async"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.127.1",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.12.0",
+    "uvicorn[standard]>=0.40.0",
+    "web3>=7.14.0",
+]
+
+[tool.poe.tasks]
+# Аналог "npm run dev"
+dev = "uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+
+# Аналог "npm start" (запуск без перезавантаження для продакшну)
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+# Скрипт для запуску вашого блокчейн-воркера (не як веб-сервер)
+worker = "python -m app.workers.manager"
+
+# Лінтер та тести
+lint = "ruff check app"
+test = "pytest"
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.39.0",
+]
